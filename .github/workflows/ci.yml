@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "*"
+    paths:
+      - "**/*.go"
+      - "go.mod"
+      - "go.sum"
+      - ./github/workflows/ci.yml
+      - "!**/*.md"
+
+  pull_request:
+    paths:
+      - "**/*.go"
+      - "go.mod"
+      - "go.sum"
+      - ./github/workflows/ci.yml
+      - "!**/*.md"
+
+concurrency:
+  group: ci-${{ github.head_ref || github.ref }}-${{ github.actor }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source
+        uses: actions/checkout@v3
+
+      - name: Set up Go
+        uses: actions/setup-go@v3
+        with:
+          go-version: 1.18
+
+      - name: Go fmt
+        run : go fmt $(go list ./...)
+
+      - name: Go vet
+        run : go vet ./...
+
+      - name: Test
+        run: go test -count=1 -race -timeout 10s -v ./...
+
+  securego:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source
+        uses: actions/checkout@v3
+           
+      - name: Set up Go
+        uses: actions/setup-go@v3
+        with:
+          go-version: 1.18
+
+      - name: Run Gosec Security Scanner
+        uses: securego/gosec@master
+        with:
+          args: ./...
