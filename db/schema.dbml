@@ -1,0 +1,7 @@
+Table users {
+  id uuid [pk]
+  user_name text [not null, unique]
+  password_hash bytea [not null]
+  created_at timestamptz [not null, default: `now() at time zone 'utc'`]
+  updated_at timestamptz [not null, default: `now() at time zone 'utc'`]
+}
