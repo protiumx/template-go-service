@@ -1,0 +1,84 @@
+version: '3'
+
+dotenv: ['.env']
+
+silent: true
+
+vars:
+  DB_CONTAINER_NAME: pg
+
+tasks:
+  build:
+    desc: Build Docker image
+    cmds:
+      - docker build -t $NAME:$VERSION .
+
+  run:
+    desc: Run go app
+    cmds:
+      - go run cmd/main.go
+
+  test:
+    desc: Run all tests or specific pats
+    cmds:
+      - go test ./{{or .CLI_ARGS "..."}} -v --race
+
+  db-gen:
+    desc: Generate queries code using Sqlc
+    cmds:
+      - docker run --rm -v $pwd:/src -w /src kjconroy/sqlc generate
+    sources:
+      - db/queries/*.sql
+    generates:
+      - pkg/db/*
+
+  db-gen-schema:
+    desc: Update schema.sql from schema.dbml
+    cmds:
+      - dbml2sql db/schema.dbml --postgres -o db/schema.sql
+
+  db-up:
+    desc: Starts postgres and runs migrations
+    deps: [db-migrate-up]
+
+  db-run:
+    desc: Run postgres docker image
+    status:
+      - docker inspect --format "{{json .State.Status}}" {{.DB_CONTAINER_NAME}}
+    cmds:
+      - cmd: >-
+          docker run --name {{.DB_CONTAINER_NAME}} -p 5432:5432
+          -e POSTGRES_HOST_AUTH_METHOD=trust
+          -d postgres:12-alpine
+      - while ! docker exec {{.DB_CONTAINER_NAME}} pg_isready -U postgres -q; do echo "waiting for postgres"; sleep 1; done
+      - echo "postgres is ready"
+  
+  db-migrate-new:
+    desc: "Create DB migration. Usage: task db-migrate-new -- <name>"
+    deps: [db-run]
+    cmds: 
+      - cmd: >-
+          docker run
+          -v $pwd/db/migrations:/migrations
+          migrate/migrate
+          create -ext sql -dir /migrations {{.CLI_ARGS}}
+    
+  db-migrate-up:
+    desc: Run database migrations
+    deps: [db-run]
+    cmds:
+      - cmd: >-
+          docker run
+          -v $pwd/db/migrations:/migrations
+          --network host migrate/migrate
+          -path=/migrations/ -database $DB_SOURCE -verbose up
+
+  db-migrate-down:
+    desc: Revert database migrations
+    deps: [db-run]
+    cmds:
+      - cmd: >-
+          docker run
+          -v $pwd/db/migrations:/migrations
+          --network host migrate/migrate
+          -path=/migrations/ -database $DB_SOURCE -verbose down -all
